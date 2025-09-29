@@ -1,0 +1,4 @@
+ultralytics==8.1.0
+boto3
+opencv-python-headless
+numpy
