@@ -7,7 +7,7 @@ on:
       - feature
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}/address-image-processor
+  IMAGE_BASE: ghcr.io/nadernt/address-image-processor/address-image-processor
 
 jobs:
   build-and-deploy:
@@ -28,10 +28,22 @@ jobs:
       # Build and push image
       - name: Build and Push Docker image
         run: |
-          TAG=${GITHUB_SHA::7}
-          docker build -t $IMAGE_NAME:$TAG -t $IMAGE_NAME:latest .
-          docker push $IMAGE_NAME:$TAG
-          docker push $IMAGE_NAME:latest
+          SHORT_SHA=${GITHUB_SHA::7}
+
+          if [[ "${GITHUB_REF}" == "refs/heads/feature" ]]; then
+            TAG=dev-latest
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            TAG=prod-latest
+          else
+            echo "Branch not configured for deployment"
+            exit 0
+          fi
+
+          echo "Building and pushing image: $IMAGE_BASE:$TAG"
+
+          docker build -t $IMAGE_BASE:$TAG -t $IMAGE_BASE:$SHORT_SHA .
+          docker push $IMAGE_BASE:$TAG
+          docker push $IMAGE_BASE:$SHORT_SHA
 
       # Deploy to RunPod (dev or prod)
       - name: Deploy to RunPod
@@ -40,18 +52,21 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == "refs/heads/feature" ]]; then
             TEMPLATE_ID=${{ secrets.RUNPOD_DEV_TEMPLATE_ID }}
+            IMAGE_TAG=dev-latest
           elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
             TEMPLATE_ID=${{ secrets.RUNPOD_PROD_TEMPLATE_ID }}
+            IMAGE_TAG=prod-latest
           else
             echo "Not deploying — branch not tracked"
             exit 0
           fi
 
-          echo "Updating RunPod template $TEMPLATE_ID with new image $IMAGE_NAME:latest"
+          FULL_IMAGE="$IMAGE_BASE:$IMAGE_TAG"
+          echo "Updating RunPod template $TEMPLATE_ID with new image $FULL_IMAGE"
 
           curl -X POST https://api.runpod.io/graphql \
             -H "Authorization: Bearer $RUNPOD_API_KEY" \
             -H "Content-Type: application/json" \
             -d '{
-              "query": "mutation { podTemplateUpdate(input: {id: \"'"$TEMPLATE_ID"'\", containerImage: \"'"$IMAGE_NAME:latest"'\"}) { id name containerImage } }"
+              "query": "mutation { podTemplateUpdate(input: {id: \"'"$TEMPLATE_ID"'\", containerImage: \"'"$FULL_IMAGE"'\"}) { id name containerImage } }"
             }'
