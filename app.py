@@ -63,7 +63,7 @@ def handler(event):
     out_path = os.path.join(tempfile.gettempdir(), "out.jpg")
     cv2.imwrite(out_path, img)
 
-    out_key = f"{client_sub}/{project_id}/out.jpg"
+    out_key = f"{client_sub}/{project_id}/tmp/{image_name}"
     try:
         s3.upload_file(out_path, bucket_name, out_key)
     except Exception as e:

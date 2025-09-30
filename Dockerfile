@@ -18,5 +18,3 @@ COPY app.py .
 
 # Start the container
 CMD ["python", "-u", "app.py"]
-
-
