@@ -1,0 +1,56 @@
+```yaml
+name: CI/CD to RunPod
+
+on:
+  push:
+    branches:
+      - main
+      - feature
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}/address-image-processor
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repo
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Log in to GitHub Container Registry
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # Build and push image
+      - name: Build and Push Docker image
+        run: |
+          TAG=${GITHUB_SHA::7}
+          docker build -t $IMAGE_NAME:$TAG -t $IMAGE_NAME:latest .
+          docker push $IMAGE_NAME:$TAG
+          docker push $IMAGE_NAME:latest
+
+      # Deploy to RunPod (dev or prod)
+      - name: Deploy to RunPod
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          if [[ "${GITHUB_REF}" == "refs/heads/feature" ]]; then
+            TEMPLATE_ID=${{ secrets.RUNPOD_DEV_TEMPLATE_ID }}
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            TEMPLATE_ID=${{ secrets.RUNPOD_PROD_TEMPLATE_ID }}
+          else
+            echo "Not deploying — branch not tracked"
+            exit 0
+          fi
+
+          echo "Updating RunPod template $TEMPLATE_ID with new image $IMAGE_NAME:latest"
+
+          curl -X POST https://api.runpod.io/graphql \
+            -H "Authorization: Bearer $RUNPOD_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "query": "mutation { podTemplateUpdate(input: {id: \"'"$TEMPLATE_ID"'\", containerImage: \"'"$IMAGE_NAME:latest"'\"}) { id name containerImage } }"
+            }'
+```
